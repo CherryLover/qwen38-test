@@ -1,5 +1,8 @@
 {
   "name": "qwen38-test",
   "main": "src/index.ts",
-  "compatibility_date": "2025-01-01"
+  "compatibility_date": "2025-01-01",
+  "routes": [
+    { "pattern": "qwen3827.flyooo.uk", "custom_domain": true }
+  ]
 }

@@ -8,7 +8,9 @@
 
 | 项目 | 技术栈 | 部署地址 | 说明 |
 |------|--------|----------|------|
-| 导航页面 | Hono + Cloudflare Workers | https://qwen38-test.jiwzdj.workers.dev | 模型独立完成从初始化到部署的全流程 |
+| 导航页面 | Hono + Cloudflare Workers | https://qwen3827.flyooo.uk | 项目统一入口 |
+| Qwen 3.8 实测过程 | HTML + CSS | https://qwen3827.flyooo.uk/qwen38-report | 环境、过程、问题、修复与客观结论 |
+| 2048 | 原生 HTML + CSS + JavaScript | https://qwen3827.flyooo.uk/2048 | 支持键盘和手机触摸操作 |
 
 > 后续会持续添加新的测试项目。
 
@@ -120,4 +122,4 @@ qwen38-test/
 
 | 日期 | 内容 | 备注 |
 |------|------|------|
-| 2025-07-14 | 初始化导航页面项目 | 模型一次性完成，无需人工修正 |
+| 2026-08-19 | 初始化导航页面、完成 2048 并整理完整实测过程 | 经真实设备反馈与浏览器测试后修复核心移动问题 |
