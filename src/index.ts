@@ -1,6 +1,72 @@
 import { Hono } from 'hono'
+import { qwen38Transcript } from './qwen38-transcript'
 
 const app = new Hono()
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function formatTranscriptTime(timestamp: string) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date(timestamp))
+}
+
+function renderTranscriptEntries() {
+  const roleLabels = { user: '用户', assistant: 'Qwen 3.8', tool: '工具结果' }
+
+  return qwen38Transcript.entries.map((entry, index) => {
+    const role = entry.role
+    const label = roleLabels[role]
+    const time = formatTranscriptTime(entry.timestamp)
+    const content = escapeHtml(entry.content)
+    const toolName = 'toolName' in entry ? escapeHtml(entry.toolName) : ''
+    const isTool = entry.kind === 'tool-call' || entry.kind === 'tool-result' || entry.kind === 'tool-error'
+
+    const body = isTool
+      ? `<details class="tool-detail"${entry.kind === 'tool-error' ? ' open' : ''}>
+          <summary>${entry.kind === 'tool-call' ? '调用' : entry.kind === 'tool-error' ? '执行报错' : '执行结果'} · ${toolName}</summary>
+          <pre>${content}</pre>
+        </details>`
+      : `<div class="message-text">${content}</div>`
+
+    return `<article class="transcript-entry role-${role}" data-role="${role}">
+      <header><span>${String(index + 1).padStart(3, '0')} · ${label}</span><time datetime="${entry.timestamp}">${time}</time></header>
+      ${body}
+    </article>`
+  }).join('')
+}
+
+function transcriptAsText() {
+  const roleLabels = { user: '用户', assistant: 'Qwen 3.8', tool: '工具结果' }
+  const lines = [
+    'Qwen3.8-27B 实测公开对话原文',
+    `HAPI Session: ${qwen38Transcript.sessionId}`,
+    '说明：保留用户、模型与工具的可见内容；内部思考和敏感授权信息未包含。',
+    '',
+  ]
+
+  qwen38Transcript.entries.forEach((entry, index) => {
+    const tool = 'toolName' in entry ? ` / ${entry.toolName}` : ''
+    lines.push(`[${String(index + 1).padStart(3, '0')}] ${formatTranscriptTime(entry.timestamp)} ${roleLabels[entry.role]}${tool}`)
+    lines.push(entry.content, '')
+  })
+
+  return lines.join('\n')
+}
 
 app.get('/', (c) => {
   return c.html(`<!DOCTYPE html>
@@ -225,6 +291,21 @@ app.get('/qwen38-report', (c) => {
     .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
     .button { display: inline-flex; min-height: 46px; align-items: center; padding: 0 1rem; border: 1px solid var(--ink); border-radius: 6px; font-weight: 700; text-decoration: none; }
     .button.primary { color: #fff; background: var(--green); border-color: var(--green); }
+    .raw-transcript { margin-top: 2rem; border: 1px solid var(--line); background: #fff; }
+    .raw-transcript > summary { cursor: pointer; padding: 1.25rem; font-weight: 750; }
+    .raw-transcript[open] > summary { border-bottom: 1px solid var(--line); }
+    .transcript-list { padding: 0 1.25rem 1.25rem; }
+    .transcript-entry { padding: 1rem 0; border-bottom: 1px solid var(--line); }
+    .transcript-entry:last-child { border-bottom: 0; }
+    .transcript-entry header { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.45rem; color: var(--muted); font-size: 0.72rem; }
+    .transcript-entry header span { font-weight: 750; }
+    .transcript-entry.role-user header span { color: var(--green); }
+    .transcript-entry.role-tool header span { color: var(--amber); }
+    .message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .role-user .message-text { padding: 1rem; background: var(--green-soft); border-left: 3px solid var(--green); }
+    .tool-detail { color: #dfe5e1; background: #171b19; }
+    .tool-detail summary { cursor: pointer; padding: 0.75rem 1rem; color: #9eb0a5; font-size: 0.8rem; }
+    .tool-detail pre { max-height: 420px; margin: 0; padding: 1rem; overflow: auto; border-top: 1px solid #303632; white-space: pre-wrap; overflow-wrap: anywhere; font: 0.75rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
     footer { padding: 2.5rem 5vw; color: #aeb7b1; background: var(--dark); font-size: 0.8rem; }
     footer div { width: min(1080px, 100%); margin: 0 auto; }
     @media (max-width: 760px) {
@@ -238,6 +319,7 @@ app.get('/qwen38-report', (c) => {
       .issue-table thead { display: none; }
       .issue-table tr { display: block; padding: 1rem 0; border-bottom: 1px solid var(--line); }
       .issue-table td { display: block; width: 100% !important; padding: 0.25rem 0; border: 0; }
+      .transcript-entry header { flex-direction: column; gap: 0.1rem; }
     }
   </style>
 </head>
@@ -261,7 +343,7 @@ app.get('/qwen38-report', (c) => {
 
   <main>
     <nav class="jump" aria-label="页面目录">
-      <a href="#overview">环境配置</a><a href="#timeline">完整过程</a><a href="#results">完成成果</a><a href="#issues">问题与修复</a><a href="#validation">验证结果</a><a href="#conclusion">客观结论</a>
+      <a href="#overview">环境配置</a><a href="#timeline">完整过程</a><a href="#results">完成成果</a><a href="#issues">问题与修复</a><a href="#validation">验证结果</a><a href="#transcript">对话原文</a><a href="#conclusion">客观结论</a>
     </nav>
 
     <section id="overview">
@@ -355,6 +437,20 @@ app.get('/qwen38-report', (c) => {
       </div>
     </section>
 
+    <section id="transcript">
+      <h2>完整对话原文</h2>
+      <p class="section-note">以下内容直接由本次 Pi 会话原始记录生成，共 ${qwen38Transcript.entryCount} 条。保留用户消息、Qwen 3.8 的可见回复、工具调用和执行结果；内部思考、图片内容和敏感授权信息未公开。</p>
+      <div class="actions">
+        <a class="button primary" href="/qwen38-transcript" target="_blank" rel="noopener">单独打开原文</a>
+        <a class="button" href="/qwen38-transcript.txt" download>下载 TXT</a>
+        <a class="button" href="/qwen38-transcript.json" download>下载 JSON</a>
+      </div>
+      <details class="raw-transcript">
+        <summary>在本页展开全部 ${qwen38Transcript.entryCount} 条原始记录</summary>
+        <div class="transcript-list">${renderTranscriptEntries()}</div>
+      </details>
+    </section>
+
     <section id="conclusion">
       <h2>客观结论</h2>
       <div class="conclusion">
@@ -370,6 +466,130 @@ app.get('/qwen38-report', (c) => {
   <footer><div>Qwen3.8-27B 实测记录 · 数据与过程记录于 2026-08-19 · 页面由本项目持续维护</div></footer>
 </body>
 </html>`)
+})
+
+app.get('/qwen38-transcript', (c) => {
+  const userMessageCount = qwen38Transcript.entries.filter((entry) => entry.role === 'user').length
+  const toolCount = qwen38Transcript.entries.filter((entry) => entry.role === 'tool').length
+
+  return c.html(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Qwen3.8-27B 实测会话的公开对话原文。">
+  <title>Qwen3.8-27B 对话原文</title>
+  <style>
+    :root { --ink: #171a18; --muted: #68716c; --paper: #f6f5f0; --line: #d7d9d4; --green: #16784a; --green-soft: #e0f1e7; --amber: #9b6612; --dark: #111513; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; line-height: 1.7; }
+    a { color: inherit; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; min-height: 56px; padding: 0.75rem 5vw; color: #edf2ee; background: var(--dark); }
+    .topbar a { text-decoration: none; font-size: 0.88rem; }
+    .topbar nav { display: flex; gap: 1rem; }
+    .hero { padding: clamp(3.5rem, 8vw, 6rem) 5vw; color: #f3f3ed; background: var(--dark); border-bottom: 5px solid var(--green); }
+    .hero-inner, main { width: min(980px, 100%); margin: 0 auto; }
+    .eyebrow { margin: 0 0 1rem; color: #8edcae; font-size: 0.78rem; font-weight: 750; }
+    h1 { margin: 0; font-size: clamp(2.3rem, 7vw, 5.4rem); line-height: 1; }
+    .lead { max-width: 720px; margin: 1.25rem 0 0; color: #bac3bd; }
+    .stats { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 2rem; color: #e5eae6; }
+    .stats b { color: #8edcae; }
+    main { padding: 2rem 5vw 6rem; }
+    .notice { padding: 1rem 1.2rem; border-left: 4px solid var(--amber); background: #f3eadb; }
+    .notice p { margin: 0; }
+    .toolbar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: 1fr auto; gap: 1rem; padding: 1rem 0; background: rgba(246, 245, 240, 0.96); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
+    .search { width: 100%; min-height: 44px; padding: 0 0.9rem; border: 1px solid #aeb4b0; border-radius: 6px; color: var(--ink); background: #fff; font: inherit; }
+    .filters { display: flex; }
+    .filters button { min-height: 44px; padding: 0 0.75rem; border: 1px solid #aeb4b0; border-right: 0; color: var(--muted); background: #fff; cursor: pointer; }
+    .filters button:first-child { border-radius: 6px 0 0 6px; }
+    .filters button:last-child { border-right: 1px solid #aeb4b0; border-radius: 0 6px 6px 0; }
+    .filters button.active { color: #fff; background: var(--green); border-color: var(--green); }
+    .download-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1.25rem 0; }
+    .button { display: inline-flex; min-height: 42px; align-items: center; padding: 0 0.9rem; border: 1px solid var(--ink); border-radius: 6px; font-weight: 700; text-decoration: none; }
+    .button.primary { color: #fff; background: var(--green); border-color: var(--green); }
+    .transcript-entry { padding: 1.25rem 0; border-bottom: 1px solid var(--line); }
+    .transcript-entry[hidden] { display: none; }
+    .transcript-entry header { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; color: var(--muted); font-size: 0.75rem; }
+    .transcript-entry header span { font-weight: 750; }
+    .transcript-entry.role-user header span { color: var(--green); }
+    .transcript-entry.role-tool header span { color: var(--amber); }
+    .message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .role-user .message-text { padding: 1rem; background: var(--green-soft); border-left: 3px solid var(--green); }
+    .tool-detail { color: #dfe5e1; background: #171b19; }
+    .tool-detail summary { cursor: pointer; padding: 0.8rem 1rem; color: #9eb0a5; font-size: 0.82rem; }
+    .tool-detail pre { max-height: 520px; margin: 0; padding: 1rem; overflow: auto; border-top: 1px solid #303632; white-space: pre-wrap; overflow-wrap: anywhere; font: 0.76rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .empty { display: none; padding: 4rem 0; color: var(--muted); text-align: center; }
+    footer { padding: 2rem 5vw; color: #aeb7b1; background: var(--dark); font-size: 0.8rem; }
+    footer div { width: min(980px, 100%); margin: 0 auto; }
+    @media (max-width: 720px) {
+      .topbar nav a:first-child { display: none; }
+      .toolbar { grid-template-columns: 1fr; }
+      .filters { overflow-x: auto; }
+      .filters button { flex: 1; white-space: nowrap; }
+      .transcript-entry header { flex-direction: column; gap: 0.1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar"><a href="/qwen38-report">返回实测报告</a><nav><a href="/">导航首页</a><a href="/2048" target="_blank" rel="noopener">2048</a></nav></header>
+  <div class="hero"><div class="hero-inner">
+    <p class="eyebrow">PUBLIC TRANSCRIPT / 北京时间</p>
+    <h1>Qwen3.8-27B<br>对话原文</h1>
+    <p class="lead">本页从 Pi 会话原始记录直接生成，按实际发生顺序展示。内容没有为了评价结果而改写。</p>
+    <div class="stats"><span><b>${qwen38Transcript.entryCount}</b> 条公开记录</span><span><b>${userMessageCount}</b> 条用户消息</span><span><b>${toolCount}</b> 条工具结果</span></div>
+  </div></div>
+  <main>
+    <div class="notice"><p><strong>公开边界：</strong>完整保留用户、模型和工具的可见文字；不包含模型内部思考、图片数据和敏感授权信息。原始来源会话：${qwen38Transcript.sessionId}</p></div>
+    <div class="download-row"><a class="button primary" href="/qwen38-transcript.txt" download>下载 TXT</a><a class="button" href="/qwen38-transcript.json" download>下载 JSON</a></div>
+    <div class="toolbar">
+      <input class="search" id="transcriptSearch" type="search" placeholder="搜索对话、命令或错误内容" aria-label="搜索对话原文">
+      <div class="filters" aria-label="筛选消息类型"><button class="active" data-filter="all">全部</button><button data-filter="user">用户</button><button data-filter="assistant">模型</button><button data-filter="tool">工具</button></div>
+    </div>
+    <div id="transcriptList">${renderTranscriptEntries()}</div>
+    <p class="empty" id="emptyState">没有找到匹配内容</p>
+  </main>
+  <footer><div>Qwen3.8-27B 实测公开对话原文 · 导出日期 2026-08-19</div></footer>
+  <script>
+    const search = document.getElementById('transcriptSearch');
+    const entries = Array.from(document.querySelectorAll('.transcript-entry'));
+    const buttons = Array.from(document.querySelectorAll('[data-filter]'));
+    const empty = document.getElementById('emptyState');
+    let role = 'all';
+
+    function applyFilter() {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+      entries.forEach(function (entry) {
+        const roleMatches = role === 'all' || entry.dataset.role === role;
+        const textMatches = !query || entry.textContent.toLowerCase().includes(query);
+        entry.hidden = !(roleMatches && textMatches);
+        if (!entry.hidden) visible++;
+      });
+      empty.style.display = visible ? 'none' : 'block';
+    }
+
+    search.addEventListener('input', applyFilter);
+    buttons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        role = button.dataset.filter;
+        buttons.forEach(function (item) { item.classList.toggle('active', item === button); });
+        applyFilter();
+      });
+    });
+  </script>
+</body>
+</html>`)
+})
+
+app.get('/qwen38-transcript.txt', (c) => {
+  c.header('Content-Type', 'text/plain; charset=UTF-8')
+  c.header('Content-Disposition', 'attachment; filename="qwen38-public-transcript.txt"')
+  return c.body(transcriptAsText())
+})
+
+app.get('/qwen38-transcript.json', (c) => {
+  c.header('Content-Disposition', 'attachment; filename="qwen38-public-transcript.json"')
+  return c.json(qwen38Transcript)
 })
 
 app.get('/2048', (c) => {

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "export:transcript": "node scripts/export-qwen38-transcript.mjs"
   },
   "dependencies": {
     "hono": "^4"

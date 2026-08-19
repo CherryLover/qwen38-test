@@ -10,6 +10,7 @@
 |------|--------|----------|------|
 | 导航页面 | Hono + Cloudflare Workers | https://qwen3827.flyooo.uk | 项目统一入口 |
 | Qwen 3.8 实测过程 | HTML + CSS | https://qwen3827.flyooo.uk/qwen38-report | 环境、过程、问题、修复与客观结论 |
+| 完整对话原文 | HTML + TXT + JSON | https://qwen3827.flyooo.uk/qwen38-transcript | 用户、模型与工具的可见原始记录 |
 | 2048 | 原生 HTML + CSS + JavaScript | https://qwen3827.flyooo.uk/2048 | 支持键盘和手机触摸操作 |
 
 > 后续会持续添加新的测试项目。
@@ -107,12 +108,29 @@ API Key:  任意（无需认证）
 npx wrangler deploy
 ```
 
+## 对话原文导出
+
+公开对话原文由 Pi 会话的 JSONL 原始记录生成。导出内容保留用户消息、模型可见回复、工具调用和执行结果；内部思考、图片数据和敏感授权信息不会公开。
+
+```bash
+npm run export:transcript -- /absolute/path/to/pi-session.jsonl
+```
+
+在线阅读和下载：
+
+- 阅读版：https://qwen3827.flyooo.uk/qwen38-transcript
+- TXT：https://qwen3827.flyooo.uk/qwen38-transcript.txt
+- JSON：https://qwen3827.flyooo.uk/qwen38-transcript.json
+
 ## 仓库结构
 
 ```
 qwen38-test/
 ├── src/
-│   └── index.ts          # Hono 入口，导航页面
+│   ├── index.ts                 # Hono 入口和页面
+│   └── qwen38-transcript.ts     # 自动生成的公开对话记录
+├── scripts/
+│   └── export-qwen38-transcript.mjs
 ├── package.json
 ├── wrangler.jsonc        # Cloudflare Workers 配置
 └── README.md
