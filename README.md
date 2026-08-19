@@ -1,6 +1,6 @@
-# Qwen3 8B 27B 实际效果验证
+# Qwen3.8-27B 实际效果验证
 
-本仓库用于验证 **千问 3.8 27B（Qwen3-27B）** 模型在真实项目中的实际效果。
+本仓库用于验证 **千问 3.8 27B（Qwen3.8-27B）** 模型在真实项目中的实际效果。
 
 通过让模型独立完成项目开发 → 部署到 Cloudflare Workers → 在线可访问的方式，直观展示模型在代码生成、架构设计、调试排错等方面的能力表现。
 
@@ -12,24 +12,80 @@
 
 > 后续会持续添加新的测试项目。
 
-## 环境 & 配置
+## 环境 & 模型配置
 
 ### 运行环境
 
-- **平台**: Google Colab（租用 GPU 实例）
-- **GPU**: <待补充，如 A100 40GB / V100 16GB 等>
-- **CUDA 版本**: <待补充>
+| 项目 | 值 |
+|------|-----|
+| 平台 | Google Colab（付费 GPU 实例） |
+| GPU | NVIDIA A100-SXM4-40GB |
+| CUDA | 12.8 |
+| 内存 | 83 GiB |
 
-### 模型配置
+### 模型
 
-- **模型**: Qwen3-27B
-- **量化方式**: <待补充，如 FP16 / GPTQ / AWQ / 4bit 等>
-- **推理框架**: <待补充，如 vLLM / transformers / llama.cpp 等>
-- **显存占用**: <待补充>
+| 项目 | 值 |
+|------|-----|
+| 模型 | Qwen3.8-27B |
+| 量化 | Q4_K_M（GGUF 格式） |
+| 模型来源 | [unsloth/Qwen3.8-27B-GGUF](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF) |
+| 模型文件大小 | 15.93 GB |
+| 推理框架 | [llama.cpp](https://github.com/ggml-org/llama.cpp)（llama-server） |
 
-### 特殊配置（如有）
+### 服务参数
 
-<待补充：是否对模型做了 LoRA、系统提示词定制、temperature/top_p 等采样参数调整、工具调用格式适配等>
+```bash
+llama-server \
+  -m Qwen3.8-27B-Q4_K_M.gguf \
+  --host 127.0.0.1 \
+  --port 8000 \
+  -c 262144 \
+  -np 1 \
+  -ngl 99 \
+  --jinja \
+  --temp 1.0 \
+  --top-p 0.95 \
+  --top-k 20 \
+  -fa on
+```
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| 上下文长度 | 262144 (256K) | FP16 KV Cache |
+| 并行 slot 数 | 1 | 单并发 |
+| GPU offload | 99 层（全部） | 完全 GPU 推理 |
+| 采样参数 | temp=1.0, top_p=0.95, top_k=20 | 接近默认设置 |
+| Flash Attention | 开启 | |
+| Jinja 模板 | 开启 | 启用 chat template |
+
+### 显存占用
+
+- 模型 + KV Cache 共占用约 **32 GB / 40 GB**（剩余约 7.7 GB 空闲）
+
+### 性能参考
+
+| 指标 | 数值 |
+|------|------|
+| 生成速度 | ~45 tokens/s |
+| Prompt 处理速度 | ~1200 tokens/s |
+
+### 模型 API 暴露
+
+通过 Cloudflare Quick Tunnel 对外暴露 OpenAI 兼容 API：
+
+```
+Base URL: https://xxx.trycloudflare.com/v1
+API Key:  任意（无需认证）
+```
+
+### 特殊配置说明
+
+- **未做 LoRA / 微调**：使用原始 Q4_K_M 量化模型
+- **采样参数接近默认**：temp=1.0, top_p=0.95, top_k=20 基本是 Qwen 官方推荐参数
+- **`--jinja` 开启**：启用 llama.cpp 的 Jinja2 chat template，确保正确格式化 system/user/assistant 消息
+- **`-fa on`（Flash Attention）**：降低长上下文场景的显存占用
+- **`enable_thinking: false`**：调用时通过 `chat_template_kwargs` 关闭思考模式（非思考模式），减少 token 消耗
 
 ## 测试标准
 
