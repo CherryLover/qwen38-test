@@ -85,7 +85,7 @@ API Key:  任意（无需认证）
 - **采样参数接近默认**：temp=1.0, top_p=0.95, top_k=20 基本是 Qwen 官方推荐参数
 - **`--jinja` 开启**：启用 llama.cpp 的 Jinja2 chat template，确保正确格式化 system/user/assistant 消息
 - **`-fa on`（Flash Attention）**：降低长上下文场景的显存占用
-- **`enable_thinking: false`**：调用时通过 `chat_template_kwargs` 关闭思考模式（非思考模式），减少 token 消耗
+- **思考模式**：模型默认开启思考，回复中包含推理过程（无独立 thinking 标签，推理直接内嵌在回复中）
 
 ## 测试标准
 
