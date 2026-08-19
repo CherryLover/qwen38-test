@@ -517,39 +517,77 @@ function render() {
 
 function move(direction) {
   if (gameOver) return;
-  const oldGrid = JSON.stringify(grid.map(row => row.map(t => t ? t.value : 0)));
+  const oldGrid = grid.map(row => row.map(t => t ? t.value : 0));
   let moved = false;
   let gained = 0;
 
-  const lines = getLines(direction);
+  for (let i = 0; i < SIZE; i++) {
+    // Collect values along the line in move direction
+    const values = [];
+    const positions = []; // (row, col) pairs in move order
 
-  for (const line of lines) {
-    const values = line.filter(t => t !== null).map(t => t.value);
+    if (direction === 'left') {
+      for (let j = 0; j < SIZE; j++) {
+        if (grid[i][j]) values.push(grid[i][j].value);
+        positions.push([i, j]);
+      }
+    } else if (direction === 'right') {
+      for (let j = SIZE - 1; j >= 0; j--) {
+        if (grid[i][j]) values.push(grid[i][j].value);
+        positions.push([i, j]);
+      }
+    } else if (direction === 'up') {
+      for (let j = 0; j < SIZE; j++) {
+        if (grid[j][i]) values.push(grid[j][i].value);
+        positions.push([j, i]);
+      }
+    } else if (direction === 'down') {
+      for (let j = SIZE - 1; j >= 0; j--) {
+        if (grid[j][i]) values.push(grid[j][i].value);
+        positions.push([j, i]);
+      }
+    }
+
+    // Merge
     const merged = [];
-    for (let i = 0; i < values.length; i++) {
-      if (values[i] === values[i + 1]) {
-        merged.push(values[i] * 2);
-        gained += values[i] * 2;
-        i++;
+    for (let k = 0; k < values.length; k++) {
+      if (values[k] === values[k + 1]) {
+        merged.push(values[k] * 2);
+        gained += values[k] * 2;
+        k++;
       } else {
-        merged.push(values[i]);
+        merged.push(values[k]);
       }
     }
     while (merged.length < SIZE) merged.push(0);
 
-    for (let i = 0; i < SIZE; i++) {
-      const cell = line[i];
-      const newVal = merged[i];
-      if (cell && cell.value !== newVal) {
-        cell.value = newVal;
-        moved = true;
-      } else if (!cell && newVal > 0) {
-        line[i] = { value: newVal, id: tileId++, isNew: false };
-        moved = true;
-      } else if (cell && newVal === 0) {
-        line[i] = null;
+    // Write back to grid directly
+    for (let k = 0; k < SIZE; k++) {
+      const [r, c] = positions[k];
+      const newVal = merged[k];
+      if (newVal === 0) {
+        grid[r][c] = null;
+      } else {
+        const oldVal = grid[r][c] ? grid[r][c].value : -1;
+        if (oldVal !== newVal) {
+          grid[r][c] = { value: newVal, id: tileId++ };
+        }
+        // else: value unchanged, keep existing tile object
       }
     }
+
+    // Check if this line actually moved
+    const newRow = [];
+    for (let k = 0; k < SIZE; k++) {
+      const [r, c] = positions[k];
+      newRow.push(grid[r][c] ? grid[r][c].value : 0);
+    }
+    const oldLine = [];
+    for (let k = 0; k < SIZE; k++) {
+      const [r, c] = positions[k];
+      oldLine.push(oldGrid[r][c]);
+    }
+    if (JSON.stringify(newRow) !== JSON.stringify(oldLine)) moved = true;
   }
 
   if (moved) {
@@ -565,24 +603,6 @@ function move(direction) {
     render();
     checkState();
   }
-}
-
-function getLines(dir) {
-  const lines = [];
-  for (let i = 0; i < SIZE; i++) {
-    const line = [];
-    if (dir === 'left') {
-      for (let j = 0; j < SIZE; j++) line.push(grid[i][j]);
-    } else if (dir === 'right') {
-      for (let j = SIZE - 1; j >= 0; j--) line.push(grid[i][j]);
-    } else if (dir === 'up') {
-      for (let j = 0; j < SIZE; j++) line.push(grid[j][i]);
-    } else if (dir === 'down') {
-      for (let j = SIZE - 1; j >= 0; j--) line.push(grid[j][i]);
-    }
-    lines.push(line);
-  }
-  return lines;
 }
 
 function checkState() {
